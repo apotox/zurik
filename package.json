@@ -1,0 +1,21 @@
+{
+  "name": "zurich",
+  "version": "1.0.0",
+  "description": "CLI tool for encrypting and decrypting sensitive project files into a single .encrypted bundle.",
+  "type": "module",
+  "bin": {
+    "zurich": "./bin/zurich.js"
+  },
+  "keywords": [
+    "encryption",
+    "cli",
+    "security",
+    "aes",
+    "gcm",
+    "git",
+    "files"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {}
+}
