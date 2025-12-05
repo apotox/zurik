@@ -1,11 +1,11 @@
 # zurich
 
 A Node.js CLI tool for encrypting and decrypting sensitive project files.  
-It collects file paths from `.gitencrypt`, bundles them into a single `.encrypted` file, and decrypts them when needed.
+It collects file paths from `.gitencrypt`, bundles them into a single `.zurich` file, and decrypts them when needed.
 
 ## Features
 
-- Encrypt multiple files into a **single** `.encrypted` bundle
+- Encrypt multiple files into a **single** `.zurich` bundle
 - AES-256-GCM authenticated encryption
 - Automatically append sensitive files to `.gitignore` when encrypting.
 

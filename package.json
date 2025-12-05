@@ -1,7 +1,7 @@
 {
   "name": "zurich",
   "version": "1.0.0",
-  "description": "CLI tool for encrypting and decrypting sensitive project files into a single .encrypted bundle.",
+  "description": "CLI tool for encrypting and decrypting sensitive project files into a single .zurich bundle.",
   "type": "module",
   "bin": {
     "zurich": "./bin/zurich.js"
