@@ -10,14 +10,14 @@ function extractPassword() {
   if (pIndex !== -1 && args[pIndex + 1]) {
     return args[pIndex + 1];
   }
-  return process.env.ZURICH_PASSWORD || null;
+  return process.env.ZURIK_PASSWORD || null;
 }
 
 
 async function run() {
   const password = extractPassword();
   if (!password) {
-    console.error("Missing password. Use -p <password> or set ZURICH_PASSWORD environment variable.");
+    console.error("Missing password. Use -p <password> or set ZURIK_PASSWORD environment variable.");
     process.exit(1);
   }
 
@@ -32,8 +32,8 @@ async function run() {
   }
 
   console.log("Usage:");
-  console.log("  npx zurich -e [-p password]   Encrypt");
-  console.log("  npx zurich -d [-p password]   Decrypt");
+  console.log("  npx zurik -e [-p password]   Encrypt");
+  console.log("  npx zurik -d [-p password]   Decrypt");
 }
 
 run().catch(err => {
