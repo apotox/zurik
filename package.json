@@ -1,6 +1,6 @@
 {
   "name": "zurik",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "CLI tool for encrypting and decrypting sensitive project files into a single .zurik bundle.",
   "type": "module",
   "bin": {

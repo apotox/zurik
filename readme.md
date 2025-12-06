@@ -22,6 +22,9 @@ npm install -g zurik
 
 # also you can pass the password as an argument
 npx zurik -e -p "your-password"
+
+# or you can type the password interactively
+npx zurik -e -p
 ```
 
 ## Usage
