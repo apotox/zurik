@@ -1,6 +1,6 @@
 {
   "name": "zurik",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "CLI tool for encrypting and decrypting sensitive project files into a single .zurik bundle.",
   "type": "module",
   "bin": {
@@ -15,7 +15,10 @@
     "git",
     "files"
   ],
-  "author": "",
-  "license": "MIT",
-  "dependencies": {}
+  "author": "Safi",
+  "repository": {
+    "type": "git",
+    "url": "git@github.com:apotox/zurik.git"
+  },
+  "license": "MIT"
 }

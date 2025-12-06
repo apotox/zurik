@@ -23,3 +23,27 @@ npm install -g zurik
 # also you can pass the password as an argument
 npx zurik -e -p "your-password"
 ```
+
+## Usage
+### Encrypt files
+- create *.gitencrypt* file in the root of your project
+- add paths to files you want to encrypt, one per line
+- for example:
+```txt
+# .gitencrypt
+src/config.json
+src/secret.txt
+```
+- run the command below
+```sh
+npx zurik -e -p "your-password"
+```
+- the encrypted files will be saved in `.zurik` file
+- it will also add the encrypted files to `.gitignore` if they are not already ignored
+
+### Decrypt files
+- run the command below to decrypt the files
+```sh
+npx zurik -d -p "your-password"
+```
+- the decrypted files will be saved in the same directory as the original files
