@@ -55,9 +55,19 @@ zurik never prompts when stdin is not a terminal, or with `--json`, `--no-input`
 
 ## Usage
 
+### Set up a project
+
+```sh
+npx zurik init
+```
+
+`init` finds the `.env` files in your project (`.env`, `.env.local`, `prod.env`, ...; skipping `node_modules` and templates like `.env.example`) and lists them with all of them selected. Untick any you don't want (space toggles, enter confirms) and they are added to `.gitencrypt`, which is created if it doesn't exist. Run it again any time to pick up new `.env` files; paths already listed are left alone. It needs no password.
+
+Outside a terminal (`--json`, `--no-input`, `$CI` or piped stdin) it adds every file found without asking. Add `--dry-run` to only see what it would do.
+
 ### Encrypt files
 
-1. Create a `.gitencrypt` file in the root of your project.
+1. Create a `.gitencrypt` file in the root of your project (or run `zurik init`).
 2. Add the paths of the files you want to encrypt, one per line. Lines starting with `#` are ignored, and paths must be inside the project.
 
    ```txt
@@ -133,7 +143,7 @@ Branch on `error.code`. Exit codes are `0` success, `1` error and `2` usage erro
 **Library API** for harnesses and scripts. It returns the same objects as `--json`, throws `ZurikError` with a `code`, prints nothing and never changes `process.cwd()`:
 
 ```js
-import { encrypt, decrypt, status, ZurikError } from "zurik";
+import { init, encrypt, decrypt, status, ZurikError } from "zurik";
 
 const s = await status({ cwd: "/repo", password: process.env.ZURIK_PASSWORD });
 if (!s.inSync) {
@@ -145,6 +155,8 @@ if (!s.inSync) {
   }
 }
 ```
+
+`init({ cwd, files, dryRun })` adds `files` (default: every `.env` file found) to `.gitencrypt` and needs no password.
 
 Options: `password`, `cwd` (search for the project root from here) or `root` (use exactly), `force` and `dryRun`.
 

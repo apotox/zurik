@@ -13,6 +13,7 @@ Run it with `npx zurik` (or `zurik` if it's installed). Always pass `--json` and
 
 | Goal | Command |
 |---|---|
+| Set up a repo without `.gitencrypt` (adds every `.env` file found; no password) | `npx zurik init --dry-run --json`, confirm the list with the user, then `npx zurik init --json` |
 | See what's out of sync (safe, read-only) | `npx zurik status --json` |
 | Restore secrets after a clone | `npx zurik decrypt --json` |
 | Save changes to secret files into `.zurik` | `npx zurik encrypt --json` |

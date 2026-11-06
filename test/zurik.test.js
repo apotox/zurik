@@ -340,7 +340,7 @@ test("--cwd runs against another directory", () => {
 test("help --json and skill describe the interface for agents", () => {
   const spec = json(zurik(tmpProject(), ["help", "--json"], { password: null }));
   assert.ok(spec.errorCodes.E_WOULD_OVERWRITE);
-  assert.deepEqual(Object.keys(spec.commands), ["encrypt", "decrypt", "status"]);
+  assert.deepEqual(Object.keys(spec.commands), ["init", "encrypt", "decrypt", "status"]);
 
   const skill = zurik(tmpProject(), ["skill"], { password: null });
   assert.equal(skill.status, 0);
@@ -364,4 +364,31 @@ test("programmatic API returns results and throws coded errors without printing"
   const dec = await decrypt({ root: dir, password: PW, force: true });
   assert.deepEqual(dec.files.map(f => f.action), ["updated", "unchanged"]);
   assert.equal((await status({ cwd: dir, password: PW })).inSync, true);
+});
+
+test("init finds .env files, creates .gitencrypt and only appends new paths", async () => {
+  const dir = tmpProject();
+  for (const f of [".env", ".env.local", "api/prod.env", "api/.env.example", "node_modules/x/.env", "notes.txt"]) write(dir, f, "x");
+
+  const res = json(zurik(dir, ["init", "--json"], { password: null }));
+  assert.equal(res.created, true);
+  assert.deepEqual(res.files.map(f => [f.path, f.action]), [[".env", "added"], [".env.local", "added"], ["api/prod.env", "added"]]);
+  assert.deepEqual(read(dir, ".gitencrypt").split("\n").filter(l => l && !l.startsWith("#")), [".env", ".env.local", "api/prod.env"]);
+
+  // Unticked files are reported as skipped and not written; existing entries are kept, not duplicated.
+  const { init } = await import("../lib/index.js");
+  write(dir, ".env.test", "x");
+  const again = await init({ cwd: dir, files: [] });
+  assert.equal(again.created, false);
+  assert.deepEqual(again.files.find(f => f.path === ".env.test").action, "skipped");
+  assert.equal(again.files.filter(f => f.action === "already-listed").length, 3);
+
+  await init({ cwd: path.join(dir, "api") }); // nearest .gitencrypt wins from a subdirectory
+  assert.equal(read(dir, ".gitencrypt").match(/^\.env$/gm).length, 1);
+  assert.match(read(dir, ".gitencrypt"), /^\.env\.test$/m);
+
+  const empty = tmpProject();
+  const none = json(zurik(empty, ["init", "--json", "--dry-run"], { password: null }));
+  assert.deepEqual([none.created, none.files], [true, []]);
+  assert.equal(fs.existsSync(path.join(empty, ".gitencrypt")), false);
 });
