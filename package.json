@@ -6,6 +6,16 @@
   "bin": {
     "zurik": "./bin/zurik.js"
   },
+  "files": [
+    "bin",
+    "lib"
+  ],
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=18"
+  },
   "keywords": [
     "encryption",
     "cli",
