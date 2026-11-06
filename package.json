@@ -3,8 +3,24 @@
   "version": "1.0.5",
   "description": "CLI tool for encrypting and decrypting sensitive project files into a single .zurik bundle.",
   "type": "module",
+  "main": "./lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./package.json": "./package.json"
+  },
   "bin": {
     "zurik": "./bin/zurik.js"
+  },
+  "files": [
+    "bin",
+    "lib",
+    "skills"
+  ],
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=18"
   },
   "keywords": [
     "encryption",
@@ -13,7 +29,11 @@
     "aes",
     "gcm",
     "git",
-    "files"
+    "files",
+    "secrets",
+    "dotenv",
+    "ai-agents",
+    "automation"
   ],
   "author": "Safi",
   "repository": {
