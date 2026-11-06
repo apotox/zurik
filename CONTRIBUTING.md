@@ -31,7 +31,7 @@ npm test
 - Add or update a test for any behaviour you change.
 - Keep it dependency-free; open an issue first if you think a dependency is needed.
 - Changes to the CLI output, error codes or `--json` shapes are part of the public interface: update `readme.md`, the `help --json` spec and `skills/zurik/SKILL.md` to match.
-- Changes to the bundle format or key derivation must keep older bundles decryptable.
+- Changes to the `.zurik` format or key derivation are breaking changes and need a major version and migration notes in `readme.md`.
 
 CI runs the tests on Linux, macOS and Windows with Node 18, 20 and 22, so a pull request must pass on all of them.
 

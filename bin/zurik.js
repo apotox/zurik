@@ -4,7 +4,7 @@ import fs from "fs";
 import path from "path";
 import * as readline from "readline";
 import { fileURLToPath } from "url";
-import { init, encrypt, decrypt, status, resolveRoot, ZurikError, ERROR_CODES, MIN_PASSWORD_LENGTH } from "../lib/index.js";
+import { init, encrypt, decrypt, status, ZurikError, ERROR_CODES, MIN_PASSWORD_LENGTH } from "../lib/index.js";
 
 const PKG_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const VERSION = JSON.parse(fs.readFileSync(path.join(PKG_DIR, "package.json"), "utf8")).version;
@@ -12,11 +12,11 @@ const VERSION = JSON.parse(fs.readFileSync(path.join(PKG_DIR, "package.json"), "
 const EXIT = { OK: 0, ERROR: 1, USAGE: 2 };
 const COMMANDS = { init: "init", encrypt: "encrypt", "-e": "encrypt", decrypt: "decrypt", "-d": "decrypt", status: "status", "-s": "status", skill: "skill", help: "help" };
 
-const HELP = `zurik ${VERSION} — encrypt project secrets into a single .zurik bundle
+const HELP = `zurik ${VERSION} — encrypt project secrets into a single .zurik file
 
 Usage:
-  zurik init     [options]   Find .env files and add them to .gitencrypt (creates it)
-  zurik encrypt  [options]   Encrypt files listed in .gitencrypt into .zurik   (alias: -e)
+  zurik init     [options]   Find .env files and list them in .zurik (creates it)
+  zurik encrypt  [options]   Encrypt the files listed in .zurik                (alias: -e)
   zurik decrypt  [options]   Restore files from .zurik                         (alias: -d)
   zurik status   [options]   Show which files are in sync, without decrypting   (alias: -s)
   zurik skill                Print instructions for AI agents (SKILL.md)
@@ -28,6 +28,7 @@ Options:
   --password-stdin           Read the password from the first line of stdin
   --password-file <path>     Read the password from a file
   -f, --force                Decrypt: overwrite local files that differ from .zurik
+  --rekey                    Encrypt: change the password (new salt, re-encrypts every file)
   -n, --dry-run              Report what would happen without writing anything
   --json                     Print one JSON object on stdout (results and errors)
   --no-input                 Never prompt; fail with E_NO_PASSWORD instead
@@ -41,15 +42,16 @@ a terminal (never with --json, --no-input or $CI). Encrypting needs ${MIN_PASSWO
 init needs no password. In a terminal it lets you pick the files (all selected by default);
 otherwise (--json, --no-input, $CI or piped stdin) it adds every .env file found.
 
-zurik uses the nearest parent directory containing .gitencrypt (encrypt), .zurik (decrypt)
-or either (status). Exit codes: 0 success, 1 error, 2 usage error.`;
+.zurik lists one "--- <path>" section per file; add or delete sections to change what is
+encrypted. zurik uses the nearest parent directory containing .zurik.
+Exit codes: 0 success, 1 error, 2 usage error.`;
 
 function usageError(message) {
   return new ZurikError("E_USAGE", message);
 }
 
 function parseArgs(argv) {
-  const opts = { command: null, json: false, force: false, dryRun: false, noInput: false, help: false, version: false };
+  const opts = { command: null, json: false, force: false, rekey: false, dryRun: false, noInput: false, help: false, version: false };
 
   // Support --flag=value for long options.
   const args = argv.flatMap(a => (a.startsWith("--") && a.includes("=") ? [a.slice(0, a.indexOf("=")), a.slice(a.indexOf("=") + 1)] : [a]));
@@ -81,6 +83,7 @@ function parseArgs(argv) {
       case "--password-stdin": opts.passwordStdin = true; break;
       case "--password-file": opts.passwordFile = takeValue(i++, a); break;
       case "-f": case "--force": opts.force = true; break;
+      case "--rekey": opts.rekey = true; break;
       case "-n": case "--dry-run": opts.dryRun = true; break;
       case "--json": opts.json = true; break;
       case "--no-input": opts.noInput = true; break;
@@ -165,7 +168,7 @@ function selectFiles(items) {
 
     const draw = () => {
       const lines = [
-        "Select files to add to .gitencrypt (up/down move, space toggle, a all/none, enter confirm):",
+        "Select files to encrypt with zurik (up/down move, space toggle, a all/none, enter confirm):",
         ...items.map((p, i) => `${i === cursor ? ">" : " "} [${selected[i] ? "x" : " "}] ${p}`),
       ];
       if (drawn) out.write(`\x1b[${drawn}A`);
@@ -234,20 +237,20 @@ function printHuman(result) {
   const log = (s) => process.stdout.write(s + "\n");
 
   if (result.command === "init") {
-    log(!result.created ? "Using existing .gitencrypt" : result.dryRun ? "[dry run] would create .gitencrypt" : "Created .gitencrypt");
+    log(!result.created ? "Using existing .zurik" : result.dryRun ? "[dry run] would create .zurik" : "Created .zurik");
     for (const f of result.files) log(`  ${f.action === "added" ? prefix : ""}${f.action.padEnd(14)}  ${f.path}`);
-    if (result.files.length === 0) log("No .env files found. Add the paths of your secret files to .gitencrypt.");
-    log("Next: run 'zurik encrypt' and commit .zurik and .gitencrypt.");
+    if (result.files.length === 0) log('No .env files found. Add a "--- <path>" line to .zurik for each secret file.');
+    log("Next: run 'zurik encrypt' and commit .zurik.");
   } else if (result.command === "encrypt") {
-    for (const f of result.files) log(`  ${prefix}encrypted  ${f.path}`);
+    for (const f of result.files) log(`  ${f.action === "unchanged" ? "" : prefix}${f.action.padEnd(9)}  ${f.path}`);
     if (result.gitignoreAdded.length) log(`  ${prefix}added to .gitignore: ${result.gitignoreAdded.join(", ")}`);
-    log(`${result.dryRun ? "Would encrypt" : "Encrypted"} ${result.files.length} file(s) into .zurik`);
+    const changed = result.files.filter(f => f.action === "encrypted").length;
+    log(`${result.dryRun ? "Would encrypt" : "Encrypted"} ${changed} file(s) into .zurik, ${result.files.length - changed} unchanged`);
   } else if (result.command === "decrypt") {
     for (const f of result.files) log(`  ${f.action === "unchanged" ? "" : prefix}${f.action.padEnd(9)}  ${f.path}`);
     log(`${result.dryRun ? "Would decrypt" : "Decrypted"} ${result.files.length} file(s) from .zurik`);
   } else if (result.command === "status") {
-    if (!result.bundleExists) log("No .zurik bundle yet.");
-    for (const f of result.files) log(`  ${f.state.padEnd(15)}  ${f.path}${f.listed ? "" : "  (not in .gitencrypt)"}`);
+    for (const f of result.files) log(`  ${f.state.padEnd(15)}  ${f.path}`);
     log(result.inSync ? "All files in sync." : "Out of sync.");
   }
 }
@@ -258,9 +261,9 @@ function helpSpec() {
     version: VERSION,
     commands: {
       init: { options: ["dryRun", "cwd"], password: false, result: "{ created, files: [{ path, action: 'added'|'already-listed'|'skipped' }] }", note: "Adds every .env file found unless run interactively in a terminal" },
-      encrypt: { options: ["password*", "dryRun", "cwd"], result: "{ files: [{ path, action: 'encrypted' }], gitignoreAdded: [path] }" },
+      encrypt: { options: ["password*", "rekey", "dryRun", "cwd"], result: "{ files: [{ path, action: 'encrypted'|'unchanged' }], gitignoreAdded: [path] }" },
       decrypt: { options: ["password*", "force", "dryRun", "cwd"], result: "{ files: [{ path, action: 'created'|'updated'|'unchanged' }] }" },
-      status: { options: ["password (only if .zurik exists)", "cwd"], result: "{ bundleExists, inSync, files: [{ path, state: 'in-sync'|'modified'|'missing-locally'|'not-in-bundle'|'missing', listed }] }" },
+      status: { options: ["password (only once something is encrypted)", "cwd"], result: "{ inSync, files: [{ path, state: 'in-sync'|'modified'|'missing-locally'|'not-in-bundle'|'missing' }] }" },
     },
     passwordSources: ["--password <value>", "--password-file <path>", "--password-stdin", "$ZURIK_PASSWORD", "$ZURIK_PASSWORD_FILE"],
     minPasswordLength: MIN_PASSWORD_LENGTH,
@@ -279,11 +282,16 @@ async function runInit(opts, base) {
 }
 
 async function runWithPassword(opts, base) {
-  // status only needs a password when there is a bundle to compare against.
-  const needsPassword =
-    opts.command !== "status" || fs.existsSync(path.join(resolveRoot("status", base), ".zurik"));
-  const password = needsPassword ? await resolvePassword(opts) : undefined;
-  if (needsPassword && !password) {
+  // status only needs a password once something is encrypted; it says so with E_NO_PASSWORD.
+  if (opts.command === "status") {
+    try {
+      return await status(base);
+    } catch (err) {
+      if (err.code !== "E_NO_PASSWORD") throw err;
+    }
+  }
+  const password = await resolvePassword(opts);
+  if (!password) {
     throw new ZurikError(
       "E_NO_PASSWORD",
       "No password provided. Use --password-file, --password-stdin, $ZURIK_PASSWORD or -p."
@@ -291,7 +299,7 @@ async function runWithPassword(opts, base) {
   }
 
   const run = { encrypt, decrypt, status }[opts.command];
-  return run({ ...base, password, force: opts.force, dryRun: opts.dryRun });
+  return run({ ...base, password, force: opts.force, rekey: opts.rekey, dryRun: opts.dryRun });
 }
 
 // ---------- main ----------

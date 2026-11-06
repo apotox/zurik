@@ -1,11 +1,11 @@
 # zurik
 
 A Node.js CLI tool for encrypting and decrypting sensitive project files.
-It collects file paths from `.gitencrypt`, bundles them into a single `.zurik` file, and decrypts them when needed.
+It encrypts your secret files into a single `.zurik` file that you commit, and decrypts them when needed.
 
 ## Features
 
-- Encrypt multiple files into a **single** `.zurik` bundle
+- Encrypt multiple files into a **single** `.zurik` file, one section per file, so git diffs and merges each secret separately
 - AES-256-GCM authenticated encryption with a scrypt-derived key
 - Automatically appends sensitive files to `.gitignore` when encrypting
 - Preserves file permissions; never overwrites changed local files without `--force`
@@ -61,30 +61,25 @@ zurik never prompts when stdin is not a terminal, or with `--json`, `--no-input`
 npx zurik init
 ```
 
-`init` finds the `.env` files in your project (`.env`, `.env.local`, `prod.env`, ...; skipping `node_modules` and templates like `.env.example`) and lists them with all of them selected. Untick any you don't want (space toggles, enter confirms) and they are added to `.gitencrypt`, which is created if it doesn't exist. Run it again any time to pick up new `.env` files; paths already listed are left alone. It needs no password.
+`init` finds the `.env` files in your project (`.env`, `.env.local`, `prod.env`, ...; skipping `node_modules` and templates like `.env.example`) and lists them with all of them selected. Untick any you don't want (space toggles, enter confirms) and they are listed in `.zurik`, which is created if it doesn't exist. Run it again any time to pick up new `.env` files; files already listed are left alone. It needs no password.
 
 Outside a terminal (`--json`, `--no-input`, `$CI` or piped stdin) it adds every file found without asking. Add `--dry-run` to only see what it would do.
 
+To encrypt other files, add a `--- <path>` line for each to `.zurik` (paths must be inside the project). To stop encrypting a file, delete its section.
+
 ### Encrypt files
 
-1. Create a `.gitencrypt` file in the root of your project (or run `zurik init`).
-2. Add the paths of the files you want to encrypt, one per line. Lines starting with `#` are ignored, and paths must be inside the project.
+```sh
+npx zurik encrypt
+```
 
-   ```txt
-   # secrets for local development
-   src/config.json
-   src/secret.txt
-   ```
+Every file listed in `.zurik` is encrypted into its section, and any that are not already in `.gitignore` are appended to it. Commit `.zurik`.
 
-3. Run:
+Files that haven't changed keep their exact encrypted text, so a commit only touches the sections of the secrets that changed, and two people changing different secrets merge without a conflict. If two people change the *same* secret, resolve the conflict by keeping one side and running `zurik encrypt` again.
 
-   ```sh
-   npx zurik encrypt
-   ```
+Every listed file must exist. If any is missing, nothing is written, so secrets are never dropped from `.zurik`. On a fresh clone, run `zurik decrypt` first.
 
-The files are encrypted into `.zurik`, and any that are not already listed in `.gitignore` are appended to it. Commit `.zurik` and `.gitencrypt`.
-
-Every listed file must exist. If any is missing, nothing is written, so an existing `.zurik` is never overwritten with a partial bundle. On a fresh clone, run `zurik decrypt` first.
+To change the password, run `zurik encrypt --rekey` with the new one; every file is re-encrypted. Without `--rekey`, encrypting with a different password than the one `.zurik` uses fails, so a typo can't lock the team out.
 
 ### Decrypt files
 
@@ -100,11 +95,11 @@ Files are restored to their original paths with their original permissions. If a
 npx zurik status
 ```
 
-Shows, for every file, whether it is `in-sync`, `modified`, `missing-locally`, `not-in-bundle` or `missing`, without writing anything or printing contents. The password is only needed once `.zurik` exists.
+Shows, for every file, whether it is `in-sync`, `modified`, `missing-locally`, `not-in-bundle` (listed, not encrypted yet) or `missing`, without writing anything or printing contents. The password is only needed once something is encrypted.
 
 Add `--dry-run` (`-n`) to `encrypt` or `decrypt` to see what would happen without writing anything.
 
-You can run zurik from any subdirectory: it uses the nearest parent directory containing `.gitencrypt` (encrypt), `.zurik` (decrypt) or either (status). `--cwd <dir>` runs it against another directory.
+You can run zurik from any subdirectory: it uses the nearest parent directory containing `.zurik`. `--cwd <dir>` runs it against another directory.
 
 The short flags from earlier versions still work: `-e` (encrypt), `-d` (decrypt), `-s` (status).
 
@@ -122,7 +117,7 @@ mkdir -p .claude/skills/zurik && npx zurik skill > .claude/skills/zurik/SKILL.md
 For other agents, add the output to `AGENTS.md`, or add this line:
 
 ```md
-Secrets are managed with zurik (.gitencrypt / .zurik). Run `npx zurik skill` for instructions; never read or print secret files or the password.
+Secrets are managed with zurik (.zurik). Run `npx zurik skill` for instructions; never read or print secret files or the password.
 ```
 
 **Provide the password** through `ZURIK_PASSWORD` or `ZURIK_PASSWORD_FILE` in the agent's environment, never in the prompt.
@@ -131,8 +126,8 @@ Secrets are managed with zurik (.gitencrypt / .zurik). Run `npx zurik skill` for
 
 ```sh
 $ npx zurik status --json
-{"ok":true,"command":"status","root":"/repo","bundleExists":true,"inSync":false,
- "files":[{"path":".env","state":"modified","listed":true}]}
+{"ok":true,"command":"status","root":"/repo","inSync":false,
+ "files":[{"path":".env","state":"modified"}]}
 
 $ npx zurik decrypt --json
 {"ok":false,"error":{"code":"E_WOULD_OVERWRITE","message":"...","details":{"files":[".env"]}}}
@@ -156,15 +151,41 @@ if (!s.inSync) {
 }
 ```
 
-`init({ cwd, files, dryRun })` adds `files` (default: every `.env` file found) to `.gitencrypt` and needs no password.
+`init({ cwd, files, dryRun })` lists `files` (default: every `.env` file found) in `.zurik` and needs no password.
 
-Options: `password`, `cwd` (search for the project root from here) or `root` (use exactly), `force` and `dryRun`.
+Options: `password`, `cwd` (search for the project root from here) or `root` (use exactly), `force`, `rekey` and `dryRun`.
 
-## Bundle format
+## File format
 
-`.zurik` is a text file: `zurik2:` followed by base64 of `logN | r | p | salt (16) | iv (12) | tag (16) | ciphertext`. The scrypt parameters are authenticated as AES-GCM additional data, so they cannot be altered to weaken the key.
+`.zurik` is a text file with a header line and one section per file:
 
-Bundles written by zurik 1.0.5 and earlier (no `zurik2:` prefix) still decrypt, including those with passwords shorter than 16 characters. The next `zurik encrypt` rewrites them in the new format, and at that point the password must meet the minimum length.
+```txt
+zurik3 scrypt logN=17 r=8 p=1 salt=<base64>
+
+--- .env
+<base64 of iv (12) | tag (16) | ciphertext>
+
+--- api/.env.production
+<base64 ...>
+```
+
+The key is derived once from the password with the scrypt parameters and salt in the header. Each file is encrypted separately with AES-256-GCM; its plaintext is its permission bits followed by its content. The header line and the file's path are authenticated as additional data, so the scrypt parameters can't be weakened and a section can't be moved to another path. A section with no data line is listed but not encrypted yet.
+
+Because files are encrypted separately, anyone who can read `.zurik` can see each file's approximate size and which file changed in each commit (the paths are visible anyway, as they are in `.gitignore`).
+
+## Upgrading from zurik 2.x
+
+zurik 3 uses a new format and no longer reads `.zurik` files from 2.x or `.gitencrypt`. To migrate a project:
+
+```sh
+npx zurik@2 decrypt      # restore the files with the old version
+rm .zurik                # keep .gitencrypt for now: it shows which files to list
+npx zurik init           # lists the .env files; add a "--- <path>" line for any others
+npx zurik encrypt
+git rm .gitencrypt
+```
+
+Everyone on the team needs zurik 3 after that; zurik 2.x can't read the new file.
 
 ## Development
 
