@@ -31,7 +31,7 @@ const read = (dir, file) => fs.readFileSync(path.join(dir, file), "utf8");
 const json = (res) => JSON.parse(res.stdout);
 const list = (dir, paths) => write(dir, ".zurik", paths.map(p => `--- ${p}\n`).join("\n"));
 // The data line under each "--- path" header.
-const blocks = (dir) => Object.fromEntries(read(dir, ".zurik").split(/\n\n/).filter(s => s.startsWith("--- ")).map(s => s.split("\n")).map(([h, d]) => [h.slice(4), d]));
+const blocks = (dir) => Object.fromEntries(read(dir, ".zurik").split(/\n\n/).filter(s => s.startsWith("--- ")).map(s => s.split("\n")).map(([h, d = ""]) => [h.slice(4), d]));
 
 // A project whose files are listed in .zurik (not yet encrypted).
 function project(files = { ".env": "A=1\n", "keys/a.pem": "k" }) {
@@ -323,7 +323,7 @@ test("--cwd runs against another directory", () => {
 test("help --json and skill describe the interface for agents", () => {
   const spec = json(zurik(tmpProject(), ["help", "--json"], { password: null }));
   assert.ok(spec.errorCodes.E_OLD_FORMAT);
-  assert.deepEqual(Object.keys(spec.commands), ["init", "encrypt", "decrypt", "status"]);
+  assert.deepEqual(Object.keys(spec.commands), ["init", "add", "encrypt", "decrypt", "status"]);
 
   const skill = zurik(tmpProject(), ["skill"], { password: null });
   assert.equal(skill.status, 0);
@@ -376,4 +376,31 @@ test("init finds .env files, creates .zurik and only appends new sections", asyn
   const none = json(zurik(empty, ["init", "--json", "--dry-run"], { password: null }));
   assert.deepEqual([none.created, none.files], [true, []]);
   assert.equal(fs.existsSync(path.join(empty, ".zurik")), false);
+});
+
+test("add lists more files relative to the current directory, without a password", () => {
+  const dir = project({ ".env": "A=1\n" });
+  write(dir, "config/secret.json", "{}");
+  write(dir, "config/key.pem", "k");
+  zurik(dir, ["encrypt"]);
+  const encrypted = blocks(dir)[".env"];
+
+  const res = json(zurik(path.join(dir, "config"), ["add", "secret.json", "../.env", "key.pem", "--json"], { password: null }));
+  assert.deepEqual(res.files, [
+    { path: "config/secret.json", action: "added" },
+    { path: ".env", action: "already-listed" },
+    { path: "config/key.pem", action: "added" },
+  ]);
+  assert.deepEqual(blocks(dir), { ".env": encrypted, "config/secret.json": "", "config/key.pem": "" });
+
+  assert.equal(json(zurik(dir, ["status", "--json"])).files[1].state, "not-in-bundle");
+  zurik(dir, ["encrypt"]);
+  assert.equal(json(zurik(dir, ["status", "--json"])).inSync, true);
+
+  const bad = json(zurik(dir, ["add", "nope.txt", "config", "--json"]));
+  assert.equal(bad.error.code, "E_MISSING_FILES");
+  assert.deepEqual(bad.error.details.files, ["nope.txt", "config"]);
+  assert.equal(json(zurik(dir, ["add", "../x", "--json"])).error.code, "E_UNSAFE_PATH");
+  assert.equal(zurik(dir, ["add"]).status, 2);
+  assert.equal(zurik(dir, ["status", "stray"]).status, 2);
 });

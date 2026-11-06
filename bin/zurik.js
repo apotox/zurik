@@ -4,18 +4,19 @@ import fs from "fs";
 import path from "path";
 import * as readline from "readline";
 import { fileURLToPath } from "url";
-import { init, encrypt, decrypt, status, ZurikError, ERROR_CODES, MIN_PASSWORD_LENGTH } from "../lib/index.js";
+import { init, add, encrypt, decrypt, status, ZurikError, ERROR_CODES, MIN_PASSWORD_LENGTH } from "../lib/index.js";
 
 const PKG_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const VERSION = JSON.parse(fs.readFileSync(path.join(PKG_DIR, "package.json"), "utf8")).version;
 
 const EXIT = { OK: 0, ERROR: 1, USAGE: 2 };
-const COMMANDS = { init: "init", encrypt: "encrypt", "-e": "encrypt", decrypt: "decrypt", "-d": "decrypt", status: "status", "-s": "status", skill: "skill", help: "help" };
+const COMMANDS = { init: "init", add: "add", encrypt: "encrypt", "-e": "encrypt", decrypt: "decrypt", "-d": "decrypt", status: "status", "-s": "status", skill: "skill", help: "help" };
 
 const HELP = `zurik ${VERSION} — encrypt project secrets into a single .zurik file
 
 Usage:
   zurik init     [options]   Find .env files and list them in .zurik (creates it)
+  zurik add <file...>        List more files in .zurik, to encrypt with 'zurik encrypt'
   zurik encrypt  [options]   Encrypt the files listed in .zurik                (alias: -e)
   zurik decrypt  [options]   Restore files from .zurik                         (alias: -d)
   zurik status   [options]   Show which files are in sync, without decrypting   (alias: -s)
@@ -39,7 +40,7 @@ Password sources, first match wins: --password value, --password-file, --passwor
 -p prompt, $ZURIK_PASSWORD, $ZURIK_PASSWORD_FILE, then an interactive prompt if stdin is
 a terminal (never with --json, --no-input or $CI). Encrypting needs ${MIN_PASSWORD_LENGTH}+ characters.
 
-init needs no password. In a terminal it lets you pick the files (all selected by default);
+init and add need no password. In a terminal it lets you pick the files (all selected by default);
 otherwise (--json, --no-input, $CI or piped stdin) it adds every .env file found.
 
 .zurik lists one "--- <path>" section per file; add or delete sections to change what is
@@ -51,7 +52,7 @@ function usageError(message) {
 }
 
 function parseArgs(argv) {
-  const opts = { command: null, json: false, force: false, rekey: false, dryRun: false, noInput: false, help: false, version: false };
+  const opts = { paths: [], command: null, json: false, force: false, rekey: false, dryRun: false, noInput: false, help: false, version: false };
 
   // Support --flag=value for long options.
   const args = argv.flatMap(a => (a.startsWith("--") && a.includes("=") ? [a.slice(0, a.indexOf("=")), a.slice(a.indexOf("=") + 1)] : [a]));
@@ -90,9 +91,13 @@ function parseArgs(argv) {
       case "-C": case "--cwd": opts.cwd = takeValue(i++, a); break;
       case "-h": case "--help": opts.help = true; break;
       case "-v": case "--version": opts.version = true; break;
-      default: throw usageError(`Unknown argument: ${a}`);
+      default:
+        if (a.startsWith("-")) throw usageError(`Unknown argument: ${a}`);
+        opts.paths.push(a);
     }
   }
+  if (opts.command === "add" && opts.paths.length === 0) throw usageError("add needs at least one file path");
+  if (opts.command !== "add" && opts.paths.length > 0) throw usageError(`Unknown argument: ${opts.paths[0]}`);
   return opts;
 }
 
@@ -236,7 +241,11 @@ function printHuman(result) {
   const prefix = result.dryRun ? "[dry run] would be " : "";
   const log = (s) => process.stdout.write(s + "\n");
 
-  if (result.command === "init") {
+  if (result.command === "add") {
+    if (result.created) log(`${result.dryRun ? "[dry run] would create" : "Created"} .zurik`);
+    for (const f of result.files) log(`  ${f.action === "added" ? prefix : ""}${f.action.padEnd(14)}  ${f.path}`);
+    log("Next: run 'zurik encrypt' and commit .zurik.");
+  } else if (result.command === "init") {
     log(!result.created ? "Using existing .zurik" : result.dryRun ? "[dry run] would create .zurik" : "Created .zurik");
     for (const f of result.files) log(`  ${f.action === "added" ? prefix : ""}${f.action.padEnd(14)}  ${f.path}`);
     if (result.files.length === 0) log('No .env files found. Add a "--- <path>" line to .zurik for each secret file.');
@@ -261,6 +270,7 @@ function helpSpec() {
     version: VERSION,
     commands: {
       init: { options: ["dryRun", "cwd"], password: false, result: "{ created, files: [{ path, action: 'added'|'already-listed'|'skipped' }] }", note: "Adds every .env file found unless run interactively in a terminal" },
+      add: { args: "<file...> (relative to the current directory)", options: ["dryRun", "cwd"], password: false, result: "{ created, files: [{ path, action: 'added'|'already-listed' }] }" },
       encrypt: { options: ["password*", "rekey", "dryRun", "cwd"], result: "{ files: [{ path, action: 'encrypted'|'unchanged' }], gitignoreAdded: [path] }" },
       decrypt: { options: ["password*", "force", "dryRun", "cwd"], result: "{ files: [{ path, action: 'created'|'updated'|'unchanged' }] }" },
       status: { options: ["password (only once something is encrypted)", "cwd"], result: "{ inSync, files: [{ path, state: 'in-sync'|'modified'|'missing-locally'|'not-in-bundle'|'missing' }] }" },
@@ -324,7 +334,10 @@ async function main() {
     }
 
     const base = { cwd: opts.cwd ? path.resolve(opts.cwd) : process.cwd() };
-    const result = opts.command === "init" ? await runInit(opts, base) : await runWithPassword(opts, base);
+    const result =
+      opts.command === "init" ? await runInit(opts, base)
+      : opts.command === "add" ? await add({ ...base, files: opts.paths, dryRun: opts.dryRun })
+      : await runWithPassword(opts, base);
 
     if (opts.json) console.log(JSON.stringify({ ok: true, ...result }));
     else printHuman(result);

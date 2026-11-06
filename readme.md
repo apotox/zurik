@@ -65,7 +65,13 @@ npx zurik init
 
 Outside a terminal (`--json`, `--no-input`, `$CI` or piped stdin) it adds every file found without asking. Add `--dry-run` to only see what it would do.
 
-To encrypt other files, add a `--- <path>` line for each to `.zurik` (paths must be inside the project). To stop encrypting a file, delete its section.
+### Add more files
+
+```sh
+npx zurik add config/secret.json keys/deploy.pem
+```
+
+Lists the files in `.zurik` (creating it if needed); run `zurik encrypt` afterwards. Paths are relative to where you run it, must be files inside the project, and files already listed are left alone. It needs no password. You can also add a `--- <path>` line to `.zurik` by hand. To stop encrypting a file, delete its section.
 
 ### Encrypt files
 
@@ -138,7 +144,7 @@ Branch on `error.code`. Exit codes are `0` success, `1` error and `2` usage erro
 **Library API** for harnesses and scripts. It returns the same objects as `--json`, throws `ZurikError` with a `code`, prints nothing and never changes `process.cwd()`:
 
 ```js
-import { init, encrypt, decrypt, status, ZurikError } from "zurik";
+import { init, add, encrypt, decrypt, status, ZurikError } from "zurik";
 
 const s = await status({ cwd: "/repo", password: process.env.ZURIK_PASSWORD });
 if (!s.inSync) {
@@ -151,7 +157,7 @@ if (!s.inSync) {
 }
 ```
 
-`init({ cwd, files, dryRun })` lists `files` (default: every `.env` file found) in `.zurik` and needs no password.
+`init({ cwd, files, dryRun })` lists `files` (default: every `.env` file found) in `.zurik`, and `add({ cwd, files, dryRun })` lists the given files (relative to `cwd`). Neither needs a password.
 
 Options: `password`, `cwd` (search for the project root from here) or `root` (use exactly), `force`, `rekey` and `dryRun`.
 
