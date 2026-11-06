@@ -344,7 +344,7 @@ test("help --json and skill describe the interface for agents", () => {
 
   const skill = zurik(tmpProject(), ["skill"], { password: null });
   assert.equal(skill.status, 0);
-  assert.match(skill.stdout, /^---\nname: zurik\n/);
+  assert.match(skill.stdout, /^---\r?\nname: zurik\r?\n/);
 });
 
 test("programmatic API returns results and throws coded errors without printing", async () => {

@@ -1,0 +1,2 @@
+# Keep LF everywhere (Windows CI runners default to CRLF on checkout).
+* text=auto eol=lf
