@@ -9,7 +9,7 @@
     "./package.json": "./package.json"
   },
   "bin": {
-    "zurik": "./bin/zurik.js"
+    "zurik": "bin/zurik.js"
   },
   "files": [
     "bin",
@@ -38,7 +38,7 @@
   "author": "Safi",
   "repository": {
     "type": "git",
-    "url": "git@github.com:apotox/zurik.git"
+    "url": "git+ssh://git@github.com/apotox/zurik.git"
   },
   "license": "MIT"
 }
