@@ -168,7 +168,7 @@ test("shows usage for -h and for no command, without asking for a password", () 
   assert.match(help.stdout, /Usage/);
 
   const none = zurik(dir, [], { password: null });
-  assert.equal(none.status, 1);
+  assert.equal(none.status, 2);
   assert.match(none.stdout, /Usage/);
 });
 
@@ -224,4 +224,144 @@ test("decrypts legacy (v1) bundles and upgrades them on the next encrypt", async
   // ...and re-encrypting with a compliant password writes v2.
   assert.equal(zurik(dir, ["-e"]).status, 0);
   assert.ok(read(dir, ".zurik").startsWith("zurik2:"));
+});
+
+// ---------- agent / harness interface ----------
+
+const json = (res) => JSON.parse(res.stdout);
+
+function project(files = { ".env": "A=1\n", "keys/a.pem": "k" }) {
+  const dir = tmpProject();
+  write(dir, ".gitencrypt", Object.keys(files).join("\n") + "\n");
+  for (const [f, c] of Object.entries(files)) write(dir, f, c);
+  return dir;
+}
+
+test("--json: success and error are single JSON objects on stdout with stable codes", () => {
+  const dir = project();
+  const ok = zurik(dir, ["encrypt", "--json"]);
+  assert.equal(ok.status, 0);
+  assert.deepEqual(json(ok), {
+    ok: true,
+    command: "encrypt",
+    root: fs.realpathSync(dir),
+    dryRun: false,
+    files: [{ path: ".env", action: "encrypted" }, { path: "keys/a.pem", action: "encrypted" }],
+    gitignoreAdded: [".env", "keys/a.pem"],
+  });
+
+  write(dir, ".env", "changed");
+  const err = zurik(dir, ["decrypt", "--json"]);
+  assert.equal(err.status, 1);
+  assert.equal(err.stderr, "");
+  assert.deepEqual(json(err).error.code, "E_WOULD_OVERWRITE");
+  assert.deepEqual(json(err).error.details.files, [".env"]);
+
+  const usage = zurik(dir, ["frobnicate", "--json"]);
+  assert.equal(usage.status, 2);
+  assert.equal(json(usage).error.code, "E_USAGE");
+});
+
+test("never hangs waiting for a password when stdin is not a terminal", () => {
+  const dir = project();
+  const res = zurik(dir, ["encrypt", "--json"], { password: null, input: "" });
+  assert.equal(res.status, 1);
+  assert.equal(json(res).error.code, "E_NO_PASSWORD");
+});
+
+test("password from --password-file, $ZURIK_PASSWORD_FILE and --password-stdin", () => {
+  const dir = project();
+  const pwFile = path.join(tmpProject(), "pw");
+  fs.writeFileSync(pwFile, PW + "\n");
+
+  assert.equal(zurik(dir, ["encrypt", "--password-file", pwFile], { password: null }).status, 0);
+
+  const env = { ...process.env, ZURIK_PASSWORD_FILE: pwFile };
+  delete env.ZURIK_PASSWORD;
+  const viaEnv = spawnSync(process.execPath, [CLI, "status", "--json"], { cwd: dir, env, encoding: "utf8" });
+  assert.equal(json(viaEnv).inSync, true);
+
+  const viaStdin = zurik(dir, ["status", "--password-stdin", "--json"], { password: null, input: PW + "\n" });
+  assert.equal(json(viaStdin).inSync, true);
+});
+
+test("status reports every state without revealing contents", () => {
+  const dir = project({ ".env": "A=1\n", "a.key": "a", "b.key": "b", "old.key": "o" });
+  zurik(dir, ["encrypt"]);
+
+  write(dir, ".env", "A=2\n"); // modified
+  fs.rmSync(path.join(dir, "a.key")); // missing-locally
+  write(dir, ".gitencrypt", ".env\na.key\nb.key\nnew.key\nghost.key\n"); // old.key unlisted
+  write(dir, "new.key", "n"); // not-in-bundle
+
+  const res = json(zurik(dir, ["status", "--json"]));
+  assert.equal(res.inSync, false);
+  assert.deepEqual(res.files, [
+    { path: ".env", state: "modified", listed: true },
+    { path: "a.key", state: "missing-locally", listed: true },
+    { path: "b.key", state: "in-sync", listed: true },
+    { path: "ghost.key", state: "missing", listed: true },
+    { path: "new.key", state: "not-in-bundle", listed: true },
+    { path: "old.key", state: "in-sync", listed: false },
+  ]);
+  assert.doesNotMatch(JSON.stringify(res), /A=2|A=1/);
+});
+
+test("status needs no password before a bundle exists", () => {
+  const dir = project();
+  const res = zurik(dir, ["status", "--json"], { password: null });
+  assert.equal(res.status, 0);
+  assert.equal(json(res).bundleExists, false);
+});
+
+test("--dry-run writes nothing and reports the planned actions", () => {
+  const dir = project();
+  const enc = json(zurik(dir, ["encrypt", "--dry-run", "--json"]));
+  assert.equal(enc.dryRun, true);
+  assert.equal(fs.existsSync(path.join(dir, ".zurik")), false);
+  assert.equal(fs.existsSync(path.join(dir, ".gitignore")), false);
+
+  zurik(dir, ["encrypt"]);
+  write(dir, ".env", "local");
+  fs.rmSync(path.join(dir, "keys/a.pem"));
+  const dec = json(zurik(dir, ["decrypt", "-f", "-n", "--json"]));
+  assert.deepEqual(dec.files, [{ path: ".env", action: "updated" }, { path: "keys/a.pem", action: "created" }]);
+  assert.equal(read(dir, ".env"), "local");
+  assert.equal(fs.existsSync(path.join(dir, "keys/a.pem")), false);
+});
+
+test("--cwd runs against another directory", () => {
+  const dir = project();
+  const res = zurik(tmpProject(), ["encrypt", "--cwd", dir, "--json"]);
+  assert.equal(res.status, 0, res.stdout);
+  assert.ok(fs.existsSync(path.join(dir, ".zurik")));
+});
+
+test("help --json and skill describe the interface for agents", () => {
+  const spec = json(zurik(tmpProject(), ["help", "--json"], { password: null }));
+  assert.ok(spec.errorCodes.E_WOULD_OVERWRITE);
+  assert.deepEqual(Object.keys(spec.commands), ["encrypt", "decrypt", "status"]);
+
+  const skill = zurik(tmpProject(), ["skill"], { password: null });
+  assert.equal(skill.status, 0);
+  assert.match(skill.stdout, /^---\nname: zurik\n/);
+});
+
+test("programmatic API returns results and throws coded errors without printing", async () => {
+  const { encrypt, decrypt, status, ZurikError } = await import("../lib/index.js");
+  const dir = project();
+
+  const enc = await encrypt({ cwd: dir, password: PW });
+  assert.equal(enc.files.length, 2);
+
+  write(dir, ".env", "changed");
+  await assert.rejects(decrypt({ cwd: dir, password: PW }), (e) => {
+    assert.ok(e instanceof ZurikError);
+    assert.equal(e.code, "E_WOULD_OVERWRITE");
+    return true;
+  });
+
+  const dec = await decrypt({ root: dir, password: PW, force: true });
+  assert.deepEqual(dec.files.map(f => f.action), ["updated", "unchanged"]);
+  assert.equal((await status({ cwd: dir, password: PW })).inSync, true);
 });
