@@ -159,3 +159,5 @@ Bundles written by zurik 1.0.5 and earlier (no `zurik2:` prefix) still decrypt, 
 ```sh
 npm test
 ```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) and the [Code of Conduct](CODE_OF_CONDUCT.md).
