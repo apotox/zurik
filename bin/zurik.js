@@ -47,6 +47,23 @@ otherwise (--json, --no-input, $CI or piped stdin) it adds every .env file found
 encrypted. zurik uses the nearest parent directory containing .zurik.
 Exit codes: 0 success, 1 error, 2 usage error.`;
 
+// Mascot from assets/logo.svg, shown above the help in a terminal only.
+const LOGO = String.raw`
+          .--.
+         / __ \
+   \o   | |  | |
+    \ .-'------'-.
+      |  o    ^  |
+      |   \__/   |--o=m
+      '-.______.-'
+        _|    |_
+`;
+
+function printHelp() {
+  if (process.stdout.isTTY) console.log(process.env.NO_COLOR ? LOGO : `\x1b[31m${LOGO}\x1b[0m`);
+  console.log(HELP);
+}
+
 function usageError(message) {
   return new ZurikError("E_USAGE", message);
 }
@@ -321,14 +338,14 @@ async function main() {
 
     if (opts.version) return void console.log(VERSION);
     if (opts.help || opts.command === "help") {
-      return void console.log(opts.json ? JSON.stringify(helpSpec(), null, 2) : HELP);
+      return void (opts.json ? console.log(JSON.stringify(helpSpec(), null, 2)) : printHelp());
     }
     if (opts.command === "skill") {
       return void process.stdout.write(fs.readFileSync(path.join(PKG_DIR, "skills", "zurik", "SKILL.md"), "utf8"));
     }
     if (!opts.command) {
       if (opts.json) throw usageError("No command given");
-      console.log(HELP);
+      printHelp();
       process.exitCode = EXIT.USAGE;
       return;
     }

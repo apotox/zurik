@@ -1,4 +1,6 @@
-# zurik
+<p align="center"><img src="assets/logo.svg" width="220" alt="zurik mascot: a cheerful padlock waving from the Alps, holding its key"></p>
+
+<h1 align="center">zurik</h1>
 
 A Node.js CLI tool for encrypting and decrypting sensitive project files.
 It encrypts your secret files into a single `.zurik` file that you commit, and decrypts them when needed.
