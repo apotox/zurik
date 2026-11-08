@@ -161,11 +161,24 @@ if (!s.inSync) {
 
 Options: `password`, `cwd` (search for the project root from here) or `root` (use exactly), `force`, `rekey` and `dryRun`.
 
+## zurik vs git-crypt, sops and dotenvx
+
+| | zurik | git-crypt | sops | dotenvx |
+|---|---|---|---|---|
+| Install | `npx`, Node 18+ | native binary + git filters | Go binary | npm or binary |
+| Keys | one password | GPG keys or a key file | age, PGP or cloud KMS | key pair in `.env.keys` |
+| Encrypts | whole files, any type | whole files | values in YAML/JSON/ENV/INI | values in `.env` files |
+| Committed | one `.zurik` file | the encrypted files in place | the encrypted files in place | the encrypted `.env` files |
+| Built for agents | `--json`, error codes, skill, never prints secrets | no | no | no |
+
+Pick zurik when you want one shared password, no extra tooling beyond Node, and an agent that can restore and check secrets without reading them. Pick sops or git-crypt when you need per-person keys or a cloud KMS.
+
 ## File format
 
-`.zurik` is a text file with a header line and one section per file:
+`.zurik` is a text file with a comment line, a header line and one section per file:
 
 ```txt
+# Encrypted with zurik (https://github.com/apotox/zurik). Restore: npx zurik decrypt; agent docs: npx zurik skill
 zurik3 scrypt logN=17 r=8 p=1 salt=<base64>
 
 --- .env
@@ -175,7 +188,7 @@ zurik3 scrypt logN=17 r=8 p=1 salt=<base64>
 <base64 ...>
 ```
 
-The key is derived once from the password with the scrypt parameters and salt in the header. Each file is encrypted separately with AES-256-GCM; its plaintext is its permission bits followed by its content. The header line and the file's path are authenticated as additional data, so the scrypt parameters can't be weakened and a section can't be moved to another path. A section with no data line is listed but not encrypted yet.
+The key is derived once from the password with the scrypt parameters and salt in the header. Each file is encrypted separately with AES-256-GCM; its plaintext is its permission bits followed by its content. The header line and the file's path are authenticated as additional data, so the scrypt parameters can't be weakened and a section can't be moved to another path. A section with no data line is listed but not encrypted yet. Lines starting with `#` are ignored and not kept: zurik rewrites the comment line each time it writes the file, so anyone (or any agent) who opens `.zurik` knows what it is.
 
 Because files are encrypted separately, anyone who can read `.zurik` can see each file's approximate size and which file changed in each commit (the paths are visible anyway, as they are in `.gitignore`).
 
@@ -192,6 +205,8 @@ git rm .gitencrypt
 ```
 
 Everyone on the team needs zurik 3 after that; zurik 2.x can't read the new file.
+
+The `#` comment line was added after 3.1.0, and zurik 3.1.0 and earlier reject it, so after upgrading make sure everyone uses `npx zurik@latest`.
 
 ## Development
 

@@ -1,0 +1,16 @@
+# zurik
+
+> zurik is a Node.js CLI (npx zurik) that encrypts a project's secret files (.env files, keys, config) into one committed `.zurik` file, and restores them after a clone. AES-256-GCM, scrypt-derived key from one shared password. Built for AI agents: it never prints file contents, takes the password from the environment, and has `--json` output with stable error codes.
+
+If a repo contains a `.zurik` file, run `npx zurik status --json` to see which secret files are missing or changed, and `npx zurik decrypt` (with `ZURIK_PASSWORD` set) to restore them. Never read, print or hand-encrypt the secret files themselves.
+
+## Docs
+
+- [README](https://github.com/apotox/zurik/blob/main/readme.md): install, password handling, commands, file format
+- [Agent skill (SKILL.md)](https://raw.githubusercontent.com/apotox/zurik/main/skills/zurik/SKILL.md): when to use zurik, safe password handling, how to handle each error code; also printed by `npx zurik skill`
+- Machine-readable spec: `npx zurik help --json` (commands, result shapes, password sources, error codes)
+
+## Optional
+
+- [npm package](https://www.npmjs.com/package/zurik)
+- [Source](https://github.com/apotox/zurik)

@@ -33,7 +33,14 @@
     "secrets",
     "dotenv",
     "ai-agents",
-    "automation"
+    "automation",
+    "env",
+    "secrets-management",
+    "encrypt-env",
+    "agent-skill",
+    "claude-code",
+    "git-crypt-alternative",
+    "sops-alternative"
   ],
   "author": "Safi",
   "repository": {

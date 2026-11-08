@@ -6,6 +6,8 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { BANNER } from "../lib/bundle.js";
+
 const PW = "correct-horse-battery-staple";
 const PIPED = "piped-password-0123456789";
 const CLI = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "bin", "zurik.js");
@@ -60,7 +62,8 @@ test("writes one readable section per file under a zurik3 header", () => {
   const dir = project();
   zurik(dir, ["-e"]);
   const text = read(dir, ".zurik");
-  assert.match(text, /^zurik3 scrypt logN=17 r=8 p=1 salt=[A-Za-z0-9+/]{22}==\n\n--- \.env\n[A-Za-z0-9+/=]+\n\n--- keys\/a\.pem\n[A-Za-z0-9+/=]+\n$/);
+  assert.ok(text.startsWith(`${BANNER}\n`));
+  assert.match(text.slice(BANNER.length + 1), /^zurik3 scrypt logN=17 r=8 p=1 salt=[A-Za-z0-9+/]{22}==\n\n--- \.env\n[A-Za-z0-9+/=]+\n\n--- keys\/a\.pem\n[A-Za-z0-9+/=]+\n$/);
   assert.doesNotMatch(text, /A=1/);
 });
 
@@ -105,7 +108,7 @@ test("rejects blocks moved to another path or a tampered header", () => {
   const dir = project({ "a.env": "a", "b.env": "b" });
   zurik(dir, ["-e"]);
   const b = blocks(dir);
-  const header = read(dir, ".zurik").split("\n")[0];
+  const header = read(dir, ".zurik").split("\n").find(l => l.startsWith("zurik3"));
 
   write(dir, ".zurik", `${header}\n\n--- a.env\n${b["b.env"]}\n\n--- b.env\n${b["a.env"]}\n`);
   assert.match(zurik(dir, ["-d", "-f"]).stderr, /Cannot decrypt a\.env/);
@@ -145,6 +148,7 @@ test("rejects unsafe paths and malformed files without writing anything", () => 
     ["--- a.env\nnot base64!\n", /unexpected content on line 2/],
     ["--- a.env\nQUJD\n", /without a header/],
     ["zurik2:QUJD\n", /zurik 2\.x or earlier/],
+    ["# a comment\n--- a.env\nQUJD\n", /without a header/], // "#" lines are skipped, not data
   ];
   for (const [text, error] of cases) {
     const dir = tmpProject();
@@ -188,7 +192,7 @@ test("works from a subdirectory", () => {
   fs.mkdirSync(path.join(dir, "sub/deeper"), { recursive: true });
   const res = zurik(path.join(dir, "sub/deeper"), ["-e"]);
   assert.equal(res.status, 0, res.stderr);
-  assert.match(read(dir, ".zurik"), /^zurik3 /);
+  assert.match(read(dir, ".zurik"), /^zurik3 /m);
 });
 
 test("reads the password from piped stdin with -p", () => {
@@ -317,7 +321,7 @@ test("--cwd runs against another directory", () => {
   const dir = project();
   const res = zurik(tmpProject(), ["encrypt", "--cwd", dir, "--json"]);
   assert.equal(res.status, 0, res.stdout);
-  assert.match(read(dir, ".zurik"), /^zurik3 /);
+  assert.match(read(dir, ".zurik"), /^zurik3 /m);
 });
 
 test("help --json and skill describe the interface for agents", () => {
@@ -356,7 +360,7 @@ test("init finds .env files, creates .zurik and only appends new sections", asyn
   const res = json(zurik(dir, ["init", "--json"], { password: null }));
   assert.equal(res.created, true);
   assert.deepEqual(res.files.map(f => [f.path, f.action]), [[".env", "added"], [".env.local", "added"], ["api/prod.env", "added"]]);
-  assert.equal(read(dir, ".zurik"), "--- .env\n\n--- .env.local\n\n--- api/prod.env\n");
+  assert.equal(read(dir, ".zurik"), `${BANNER}\n\n` + "--- .env\n\n--- .env.local\n\n--- api/prod.env\n");
 
   // Encrypted sections survive a later init; unticked files are reported as skipped and not written.
   zurik(dir, ["encrypt"]);
@@ -370,7 +374,7 @@ test("init finds .env files, creates .zurik and only appends new sections", asyn
   const before = blocks(dir);
   await init({ cwd: path.join(dir, "api") }); // nearest .zurik wins from a subdirectory
   assert.deepEqual(blocks(dir), { ...before, ".env.test": "" });
-  assert.match(read(dir, ".zurik"), /^zurik3 /);
+  assert.match(read(dir, ".zurik"), /^zurik3 /m);
 
   const empty = tmpProject();
   const none = json(zurik(empty, ["init", "--json", "--dry-run"], { password: null }));
