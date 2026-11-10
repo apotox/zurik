@@ -48,7 +48,7 @@ Run it with `npx zurik` (or `zurik` if it's installed). Always pass `--json` and
 | `E_WEAK_PASSWORD` | Encrypting needs 16+ characters. The user must choose a longer password. |
 | `E_NOT_FOUND`, `E_NO_BUNDLE`, `E_EMPTY_LIST` | Nothing to work on at this location; check `--cwd`, or run `init` to set up `.zurik`. |
 | `E_OLD_FORMAT` | `.zurik` is from zurik 2.x. Tell the user; migrating needs `npx zurik@2 decrypt` and the password (see the readme). Don't delete `.zurik` yourself. |
-| `E_UNSAFE_PATH` | A path in `.zurik` is absolute or outside the project. If you added it, fix it; otherwise treat the file as suspicious and tell the user. |
+| `E_UNSAFE_PATH` | A path in `.zurik` is absolute or leaves the project, directly or through a symlink. If you added it, fix it; otherwise treat the file as suspicious and tell the user. |
 
 Exit codes: `0` success, `1` error, `2` usage error.
 

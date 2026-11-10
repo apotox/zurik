@@ -48,6 +48,7 @@ test("round-trips files, including nested paths and binary content", () => {
   const dir = project({ ".env": "SECRET=1\n", "src/config.json": '{"a":1}', "keys/cert.bin": binary, "empty.txt": "" });
 
   assert.equal(zurik(dir, ["-e"]).status, 0);
+  assert.deepEqual(fs.readdirSync(dir).filter(f => f.startsWith(".zurik")), [".zurik"]); // no temp file left behind
   for (const f of [".env", "src", "keys", "empty.txt"]) fs.rmSync(path.join(dir, f), { recursive: true });
 
   const res = zurik(dir, ["-d"]);
@@ -116,8 +117,37 @@ test("rejects blocks moved to another path or a tampered header", () => {
   write(dir, ".zurik", `${header.replace("logN=17", "logN=14")}\n\n--- a.env\n${b["a.env"]}\n`);
   assert.match(zurik(dir, ["-d", "-f"]).stderr, /wrong password or the \.zurik file was modified/);
 
-  write(dir, ".zurik", `${header.replace("logN=17", "logN=30")}\n\n--- a.env\n${b["a.env"]}\n`);
-  assert.match(zurik(dir, ["-d", "-f"]).stderr, /unsupported header/);
+  for (const huge of ["logN=30 r=8", "logN=17 r=32", "logN=1 r=1048576"]) { // each needs 512 MiB or more
+    write(dir, ".zurik", `${header.replace("logN=17 r=8", huge)}\n\n--- a.env\n${b["a.env"]}\n`);
+    assert.match(zurik(dir, ["-d", "-f"]).stderr, /unsupported header/, huge);
+  }
+});
+
+test("refuses paths that leave the project through a symlink", { skip: process.platform === "win32" }, () => {
+  const outside = tmpProject();
+  write(outside, "target", "untouched");
+  const dir = project({ ".env": "x", "link.env": "y" });
+  zurik(dir, ["-e"]);
+
+  // decrypt: an encrypted path has become a link out of the project
+  fs.rmSync(path.join(dir, "link.env"));
+  fs.symlinkSync(path.join(outside, "target"), path.join(dir, "link.env"));
+  const dec = json(zurik(dir, ["decrypt", "-f", "--json"]));
+  assert.equal(dec.error.code, "E_UNSAFE_PATH");
+  assert.equal(read(outside, "target"), "untouched");
+
+  // encrypt/add: a linked directory, a file under it that doesn't exist yet, a dangling link
+  fs.symlinkSync(outside, path.join(dir, "shared"));
+  fs.symlinkSync(path.join(outside, "missing"), path.join(dir, "dangling.env"));
+  for (const p of ["shared/target", "shared/new", "dangling.env"]) {
+    assert.equal(json(zurik(dir, ["add", p, "--json"])).error.code, "E_UNSAFE_PATH", p);
+  }
+  assert.equal(fs.existsSync(path.join(outside, "missing")), false);
+
+  // links that stay inside the project are fine
+  fs.symlinkSync(".env", path.join(dir, "alias.env"));
+  list(dir, [".env", "alias.env"]);
+  assert.equal(zurik(dir, ["-e"]).status, 0);
 });
 
 test("refuses to encrypt when a listed file is missing and keeps the old bundle", () => {
@@ -177,7 +207,7 @@ test("does not overwrite changed local files without --force", () => {
   assert.equal(read(dir, ".env"), "original");
 });
 
-test("preserves file permissions", { skip: process.platform === "win32" }, () => {
+test("preserves file permissions, and re-encrypts a permission-only change", { skip: process.platform === "win32" }, () => {
   const dir = project({ key: "k" });
   fs.chmodSync(path.join(dir, "key"), 0o640);
   zurik(dir, ["-e"]);
@@ -185,6 +215,12 @@ test("preserves file permissions", { skip: process.platform === "win32" }, () =>
 
   zurik(dir, ["-d"]);
   assert.equal(fs.statSync(path.join(dir, "key")).mode & 0o777, 0o640);
+
+  fs.chmodSync(path.join(dir, "key"), 0o600);
+  assert.deepEqual(json(zurik(dir, ["encrypt", "--json"])).files, [{ path: "key", action: "encrypted" }]);
+  fs.chmodSync(path.join(dir, "key"), 0o644);
+  zurik(dir, ["-d"]);
+  assert.equal(fs.statSync(path.join(dir, "key")).mode & 0o777, 0o600);
 });
 
 test("works from a subdirectory", () => {
