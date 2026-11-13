@@ -336,6 +336,27 @@ test("status needs no password before anything is encrypted", () => {
   assert.equal(json(res).files[0].state, "not-in-bundle");
 });
 
+test("verify proves the bundle decrypts; wrong password and tampering give stable codes", () => {
+  const dir = project({ ".env": "x" });
+
+  // nothing encrypted yet: the structure verifies, no password needed
+  const empty = json(zurik(dir, ["verify", "--json"], { password: null }));
+  assert.deepEqual([empty.verified, empty.files], [false, []]);
+
+  zurik(dir, ["-e"]);
+  const res = json(zurik(dir, ["verify", "--json"]));
+  assert.deepEqual([res.verified, res.files], [true, [".env"]]);
+
+  const wrong = json(zurik(dir, ["verify", "--json"], { password: "wrong-password-123456" }));
+  assert.equal(wrong.error.code, "E_WRONG_PASSWORD");
+
+  // the header is authenticated together with the sections, so editing it must fail
+  write(dir, ".zurik", read(dir, ".zurik").replace("logN=17", "logN=14"));
+  assert.equal(json(zurik(dir, ["verify", "--json"])).error.code, "E_WRONG_PASSWORD");
+
+  assert.equal(json(zurik(tmpProject(), ["verify", "--json"])).error.code, "E_NOT_FOUND");
+});
+
 test("--dry-run writes nothing and reports the planned actions", () => {
   const dir = project();
   const listed = read(dir, ".zurik");
@@ -363,7 +384,7 @@ test("--cwd runs against another directory", () => {
 test("help --json and skill describe the interface for agents", () => {
   const spec = json(zurik(tmpProject(), ["help", "--json"], { password: null }));
   assert.ok(spec.errorCodes.E_OLD_FORMAT);
-  assert.deepEqual(Object.keys(spec.commands), ["init", "add", "encrypt", "decrypt", "status"]);
+  assert.deepEqual(Object.keys(spec.commands), ["init", "add", "encrypt", "decrypt", "status", "verify"]);
 
   const skill = zurik(tmpProject(), ["skill"], { password: null });
   assert.equal(skill.status, 0);

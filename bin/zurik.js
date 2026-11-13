@@ -4,13 +4,13 @@ import fs from "fs";
 import path from "path";
 import * as readline from "readline";
 import { fileURLToPath } from "url";
-import { init, add, encrypt, decrypt, status, ZurikError, ERROR_CODES, MIN_PASSWORD_LENGTH } from "../lib/index.js";
+import { init, add, encrypt, decrypt, status, verify, ZurikError, ERROR_CODES, MIN_PASSWORD_LENGTH } from "../lib/index.js";
 
 const PKG_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "..");
 const VERSION = JSON.parse(fs.readFileSync(path.join(PKG_DIR, "package.json"), "utf8")).version;
 
 const EXIT = { OK: 0, ERROR: 1, USAGE: 2 };
-const COMMANDS = { init: "init", add: "add", encrypt: "encrypt", "-e": "encrypt", decrypt: "decrypt", "-d": "decrypt", status: "status", "-s": "status", skill: "skill", help: "help" };
+const COMMANDS = { init: "init", add: "add", encrypt: "encrypt", "-e": "encrypt", decrypt: "decrypt", "-d": "decrypt", status: "status", "-s": "status", verify: "verify", skill: "skill", help: "help" };
 
 const HELP = `zurik ${VERSION} — encrypt project secrets into a single .zurik file
 
@@ -20,6 +20,7 @@ Usage:
   zurik encrypt  [options]   Encrypt the files listed in .zurik                (alias: -e)
   zurik decrypt  [options]   Restore files from .zurik                         (alias: -d)
   zurik status   [options]   Show which files are in sync, without decrypting   (alias: -s)
+  zurik verify   [options]   Check every section of .zurik still decrypts, writes nothing
   zurik skill                Print instructions for AI agents (SKILL.md)
   zurik help [--json]        Show this help; --json prints a machine-readable spec
 
@@ -278,6 +279,9 @@ function printHuman(result) {
   } else if (result.command === "status") {
     for (const f of result.files) log(`  ${f.state.padEnd(15)}  ${f.path}`);
     log(result.inSync ? "All files in sync." : "Out of sync.");
+  } else if (result.command === "verify") {
+    for (const p of result.files) log(`  ${"ok".padEnd(9)}  ${p}`);
+    log(result.verified ? `.zurik is intact: all ${result.files.length} file(s) decrypt under the password.` : "Nothing is encrypted in .zurik yet (run 'zurik encrypt').");
   }
 }
 
@@ -291,6 +295,7 @@ function helpSpec() {
       encrypt: { options: ["password*", "rekey", "dryRun", "cwd"], result: "{ files: [{ path, action: 'encrypted'|'unchanged' }], gitignoreAdded: [path] }" },
       decrypt: { options: ["password*", "force", "dryRun", "cwd"], result: "{ files: [{ path, action: 'created'|'updated'|'unchanged' }] }" },
       status: { options: ["password (only once something is encrypted)", "cwd"], result: "{ inSync, files: [{ path, state: 'in-sync'|'modified'|'missing-locally'|'not-in-bundle'|'missing' }] }" },
+      verify: { options: ["password (only once something is encrypted)", "cwd"], result: "{ verified, files: [path] }", note: "Fails with E_WRONG_PASSWORD or E_CORRUPT when .zurik was tampered with or damaged" },
     },
     passwordSources: ["--password <value>", "--password-file <path>", "--password-stdin", "$ZURIK_PASSWORD", "$ZURIK_PASSWORD_FILE"],
     minPasswordLength: MIN_PASSWORD_LENGTH,
@@ -309,10 +314,10 @@ async function runInit(opts, base) {
 }
 
 async function runWithPassword(opts, base) {
-  // status only needs a password once something is encrypted; it says so with E_NO_PASSWORD.
-  if (opts.command === "status") {
+  // status and verify only need a password once something is encrypted; they say so with E_NO_PASSWORD.
+  if (opts.command === "status" || opts.command === "verify") {
     try {
-      return await status(base);
+      return await { status, verify }[opts.command](base);
     } catch (err) {
       if (err.code !== "E_NO_PASSWORD") throw err;
     }
@@ -325,7 +330,7 @@ async function runWithPassword(opts, base) {
     );
   }
 
-  const run = { encrypt, decrypt, status }[opts.command];
+  const run = { encrypt, decrypt, status, verify }[opts.command];
   return run({ ...base, password, force: opts.force, rekey: opts.rekey, dryRun: opts.dryRun });
 }
 

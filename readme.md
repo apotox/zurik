@@ -5,10 +5,13 @@
 A Node.js CLI tool for encrypting and decrypting sensitive project files.
 It encrypts your secret files into a single `.zurik` file that you commit, and decrypts them when needed.
 
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/apotox/zurich/badge)](https://scorecard.dev/viewer/?uri=github.com/apotox/zurich)
+
 ## Features
 
 - Encrypt multiple files into a **single** `.zurik` file, one section per file, so git diffs and merges each secret separately
 - AES-256-GCM authenticated encryption with a scrypt-derived key
+- **Zero dependencies**: everything is Node's built-in crypto — nothing extra to install, audit or keep updated
 - Automatically appends sensitive files to `.gitignore` when encrypting
 - Preserves file permissions; never overwrites changed local files without `--force`
 - Built for automation and AI agents: `--json` output, stable error codes, `status` and `--dry-run`, never blocks on a prompt, and a library API
@@ -105,6 +108,14 @@ npx zurik status
 
 Shows, for every file, whether it is `in-sync`, `modified`, `missing-locally`, `not-in-bundle` (listed, not encrypted yet) or `missing`, without writing anything or printing contents. The password is only needed once something is encrypted.
 
+### Verify the bundle
+
+```sh
+npx zurik verify
+```
+
+Proves `.zurik` is intact and authentic: the structure is valid and every section decrypts under the password. It writes nothing and never prints contents, so it is safe to run in CI or from an agent — it fails with `E_WRONG_PASSWORD` or `E_CORRUPT` when the file was edited or damaged, even by someone with commit access. Like `status`, it needs no password until something is encrypted.
+
 Add `--dry-run` (`-n`) to `encrypt` or `decrypt` to see what would happen without writing anything.
 
 You can run zurik from any subdirectory: it uses the nearest parent directory containing `.zurik`. `--cwd <dir>` runs it against another directory.
@@ -146,7 +157,7 @@ Branch on `error.code`. Exit codes are `0` success, `1` error and `2` usage erro
 **Library API** for harnesses and scripts. It returns the same objects as `--json`, throws `ZurikError` with a `code`, prints nothing and never changes `process.cwd()`:
 
 ```js
-import { init, add, encrypt, decrypt, status, ZurikError } from "zurik";
+import { init, add, encrypt, decrypt, status, verify, ZurikError } from "zurik";
 
 const s = await status({ cwd: "/repo", password: process.env.ZURIK_PASSWORD });
 if (!s.inSync) {
@@ -159,7 +170,7 @@ if (!s.inSync) {
 }
 ```
 
-`init({ cwd, files, dryRun })` lists `files` (default: every `.env` file found) in `.zurik`, and `add({ cwd, files, dryRun })` lists the given files (relative to `cwd`). Neither needs a password.
+`init({ cwd, files, dryRun })` lists `files` (default: every `.env` file found) in `.zurik`, and `add({ cwd, files, dryRun })` lists the given files (relative to `cwd`). Neither needs a password. `verify({ password, cwd })` proves `.zurik` decrypts under the password and returns `{ verified, files }`.
 
 Options: `password`, `cwd` (search for the project root from here) or `root` (use exactly), `force`, `rekey` and `dryRun`.
 
