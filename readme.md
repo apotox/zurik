@@ -5,7 +5,7 @@
 A Node.js CLI tool for encrypting and decrypting sensitive project files.
 It encrypts your secret files into a single `.zurik` file that you commit, and decrypts them when needed.
 
-[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/apotox/zurich/badge)](https://scorecard.dev/viewer/?uri=github.com/apotox/zurich)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/apotox/zurik/badge)](https://scorecard.dev/viewer/?uri=github.com/apotox/zurik)
 
 ## Features
 
