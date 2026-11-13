@@ -8,6 +8,7 @@ on:
 permissions:
   contents: read
   id-token: write # required for npm trusted publishing and provenance
+  packages: write # required to publish to GitHub Packages
 
 jobs:
   publish:
@@ -46,3 +47,19 @@ jobs:
       # repository apotox/zurik, workflow publish.yml.
       - name: Publish
         run: npm publish --access public
+
+      # Mirror to GitHub Packages so it shows in the repo's Packages sidebar.
+      # That registry requires an owner-scoped name; the rename is CI-only.
+      - name: Set up GitHub Packages registry
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@apotox'
+
+      - name: Publish to GitHub Packages
+        run: |
+          npm pkg set name=@apotox/zurik
+          npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
